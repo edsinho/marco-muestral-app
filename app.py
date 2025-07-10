@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -15,7 +16,6 @@ if file:
     if not all(col in df.columns for col in required_cols):
         st.error("⚠️ El archivo debe tener las columnas: ZONA, GSE, EDAD, NOMBRE_GENERO")
     else:
-        # 🧠 Ingreso de rangos de edad personalizados
         rangos_input = st.text_input(
             "Ingresa los rangos de edad que quieres usar (ej: 20-30,31-40,41-60):",
             value="20-33,34-41,42-50"
@@ -47,8 +47,8 @@ if file:
         generos = st.multiselect("Géneros a incluir:", df['NOMBRE_GENERO'].unique().tolist(), default=list(df['NOMBRE_GENERO'].unique()))
         rangos = sorted(set(df['RANGO_EDAD_CUSTOM']))
 
-        total_objetivo = st.number_input("Número total de casos:", min_value=300, max_value=20000, value=0, step=100)
-        partes = st.number_input("¿En cuántas partes deseas dividir la muestra?", min_value=1, max_value=10, value=3, step=1)
+        total_objetivo = st.number_input("Número total de casos:", min_value=300, max_value=10000, value=4500, step=100)
+        partes = st.number_input("¿En cuántas partes deseas dividir la muestra?", min_value=2, max_value=10, value=3, step=1)
 
         if st.button("Generar muestra"):
             base = df[
