@@ -48,7 +48,7 @@ if file:
         rangos = sorted(set(df['RANGO_EDAD_CUSTOM']))
 
         total_objetivo = st.number_input("Número total de casos:", min_value=300, max_value=10000, value=4500, step=100)
-        partes = st.number_input("¿En cuántas partes deseas dividir la muestra?", min_value=2, max_value=10, value=3, step=1)
+        partes = st.number_input("¿En cuántas partes deseas dividir la muestra?", min_value=1, max_value=10, value=3, step=1)
 
         if st.button("Generar muestra"):
             base = df[
