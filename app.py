@@ -1,14 +1,3 @@
-
-import streamlit as st
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from io import BytesIO
-
-st.set_page_config(page_title="Generador de Marco Muestral", layout="centered")
-st.title("📊 Generador de Marco Muestral Equilibrado")
-
-file = st.file_uploader("📂 Sube tu archivo Excel (.xlsx)", type=["xlsx"])
-
 if file:
     df = pd.read_excel(file)
 
@@ -16,94 +5,92 @@ if file:
     if not all(col in df.columns for col in required_cols):
         st.error("⚠️ El archivo debe tener las columnas: ZONA, GSE, EDAD, NOMBRE_GENERO")
     else:
-        rangos_input = st.text_input(
-            "Ingresa los rangos de edad que quieres usar (ej: 20-30,31-40,41-60):",
-            value="20-33,34-41,42-50"
+        # ... [MISMO código hasta antes del botón] ...
+
+        # Sección de carga de configuración previa
+        st.subheader("📁 Opcional: Cargar configuración de cuotas")
+        cuotas_file = st.file_uploader("Sube archivo Excel con cuotas (ZONA, GSE, RANGO_EDAD_CUSTOM, NOMBRE_GENERO, Deseados)", type=["xlsx"], key="cuotas_file")
+
+        base = df[
+            df['ZONA'].isin(zonas) &
+            df['GSE'].isin(gses) &
+            df['RANGO_EDAD_CUSTOM'].isin(rangos) &
+            df['NOMBRE_GENERO'].isin(generos)
+        ].copy()
+
+        segmentos = base.groupby(['ZONA', 'GSE', 'RANGO_EDAD_CUSTOM', 'NOMBRE_GENERO']).size().reset_index(name='Disponibles')
+
+        if cuotas_file:
+            try:
+                cuotas_df = pd.read_excel(cuotas_file)
+                cuotas_df = cuotas_df.merge(segmentos, on=['ZONA', 'GSE', 'RANGO_EDAD_CUSTOM', 'NOMBRE_GENERO'], how='left')
+                cuotas_df['Deseados'] = cuotas_df['Deseados'].fillna(0).astype(int)
+                st.success("✅ Configuración de cuotas cargada correctamente.")
+            except Exception as e:
+                st.error(f"❌ Error al leer archivo de cuotas: {e}")
+                cuotas_df = segmentos.copy()
+                cuotas_df['Deseados'] = 0
+        else:
+            cuotas_df = segmentos.copy()
+            cuotas_df['Deseados'] = 0
+
+        st.info("✏️ Edita la cantidad de casos deseados por segmento (máximo lo disponible).")
+        edited_df = st.data_editor(cuotas_df, num_rows="dynamic")
+
+        # Botón para exportar la configuración
+        def convertir_excel(df):
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False)
+            return output.getvalue()
+
+        st.download_button(
+            label="💾 Descargar configuración de cuotas",
+            data=convertir_excel(edited_df[['ZONA', 'GSE', 'RANGO_EDAD_CUSTOM', 'NOMBRE_GENERO', 'Deseados']]),
+            file_name="cuotas_configuracion.xlsx"
         )
 
-        def parse_rangos(texto):
-            rangos = []
-            for r in texto.split(','):
-                partes = r.strip().split('-')
-                if len(partes) == 2 and partes[0].isdigit() and partes[1].isdigit():
-                    inicio, fin = int(partes[0]), int(partes[1])
-                    if inicio < fin:
-                        rangos.append((inicio, fin))
-            return rangos
+        total_deseado = edited_df['Deseados'].sum()
+        st.markdown(f"**🎯 Total de casos deseados: {total_deseado}**")
 
-        rangos_tuplas = parse_rangos(rangos_input)
+        if st.button("🎲 Generar muestra"):
+            if total_deseado == 0:
+                st.warning("⚠️ Debes asignar al menos un caso en algún segmento.")
+            else:
+                muestras = []
+                for _, row in edited_df.iterrows():
+                    if row['Deseados'] > 0:
+                        subset = base[
+                            (base['ZONA'] == row['ZONA']) &
+                            (base['GSE'] == row['GSE']) &
+                            (base['RANGO_EDAD_CUSTOM'] == row['RANGO_EDAD_CUSTOM']) &
+                            (base['NOMBRE_GENERO'] == row['NOMBRE_GENERO'])
+                        ]
+                        n = min(int(row['Deseados']), len(subset))
+                        muestras.append(subset.sample(n, random_state=42))
 
-        def clasificar_rango_personalizado(edad):
-            for (inicio, fin) in rangos_tuplas:
-                if inicio <= edad <= fin:
-                    return f"{inicio}-{fin}"
-            return None
+                muestra_final = pd.concat(muestras).sample(frac=1, random_state=42).reset_index(drop=True)
 
-        df['RANGO_EDAD_CUSTOM'] = df['EDAD'].apply(clasificar_rango_personalizado)
-        df = df[df['RANGO_EDAD_CUSTOM'].notnull()]
-
-        zonas = st.multiselect("Zonas a incluir:", df['ZONA'].unique().tolist(), default=list(df['ZONA'].unique()))
-        gses = st.multiselect("GSEs a incluir:", df['GSE'].unique().tolist(), default=list(df['GSE'].unique()))
-        generos = st.multiselect("Géneros a incluir:", df['NOMBRE_GENERO'].unique().tolist(), default=list(df['NOMBRE_GENERO'].unique()))
-        rangos = sorted(set(df['RANGO_EDAD_CUSTOM']))
-
-        total_objetivo = st.number_input("Número total de casos:", min_value=300, max_value=10000, value=4500, step=100)
-        partes = st.number_input("¿En cuántas partes deseas dividir la muestra?", min_value=1, max_value=10, value=3, step=1)
-
-        if st.button("Generar muestra"):
-            base = df[
-                df['ZONA'].isin(zonas) &
-                df['GSE'].isin(gses) &
-                df['RANGO_EDAD_CUSTOM'].isin(rangos) &
-                df['NOMBRE_GENERO'].isin(generos)
-            ].copy()
-
-            grupo = base.groupby(['ZONA', 'GSE', 'RANGO_EDAD_CUSTOM', 'NOMBRE_GENERO'])
-            proporciones = grupo.size() / grupo.size().sum()
-            muestras_por_grupo = (proporciones * total_objetivo).round().astype(int)
-
-            diferencia = total_objetivo - muestras_por_grupo.sum()
-            if diferencia != 0:
-                muestras_por_grupo[muestras_por_grupo.idxmax()] += diferencia
-
-            muestras = []
-            for (zona, gse, rango, genero), n in muestras_por_grupo.items():
-                subset = base[
-                    (base['ZONA'] == zona) &
-                    (base['GSE'] == gse) &
-                    (base['RANGO_EDAD_CUSTOM'] == rango) &
-                    (base['NOMBRE_GENERO'] == genero)
-                ]
-                muestras.append(subset.sample(min(n, len(subset)), random_state=42))
-
-            muestra_final = pd.concat(muestras).sample(frac=1, random_state=42).reset_index(drop=True)
-
-            muestra_final['estrato'] = (
-                muestra_final['ZONA'] + "_" +
-                muestra_final['GSE'] + "_" +
-                muestra_final['RANGO_EDAD_CUSTOM'] + "_" +
-                muestra_final['NOMBRE_GENERO']
-            )
-
-            partes_data = []
-            temp = muestra_final.copy()
-            for i in range(partes - 1):
-                temp, part = train_test_split(temp, test_size=1/(partes - i), stratify=temp['estrato'], random_state=42)
-                part.drop(columns='estrato', inplace=True)
-                partes_data.append(part)
-            temp.drop(columns='estrato', inplace=True)
-            partes_data.append(temp)
-
-            def convertir_excel(df):
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    df.to_excel(writer, index=False)
-                return output.getvalue()
-
-            st.success(f"✅ Muestra generada y dividida en {partes} partes.")
-            for idx, df_part in enumerate(partes_data):
-                st.download_button(
-                    label=f"📥 Descargar Parte {idx+1}",
-                    data=convertir_excel(df_part),
-                    file_name=f"marco_parte_{idx+1}.xlsx"
+                muestra_final['estrato'] = (
+                    muestra_final['ZONA'] + "_" +
+                    muestra_final['GSE'] + "_" +
+                    muestra_final['RANGO_EDAD_CUSTOM'] + "_" +
+                    muestra_final['NOMBRE_GENERO']
                 )
+
+                partes_data = []
+                temp = muestra_final.copy()
+                for i in range(partes - 1):
+                    temp, part = train_test_split(temp, test_size=1/(partes - i), stratify=temp['estrato'], random_state=42)
+                    part.drop(columns='estrato', inplace=True)
+                    partes_data.append(part)
+                temp.drop(columns='estrato', inplace=True)
+                partes_data.append(temp)
+
+                st.success(f"✅ Muestra generada con {total_deseado} casos y dividida en {partes} partes.")
+                for idx, df_part in enumerate(partes_data):
+                    st.download_button(
+                        label=f"📥 Descargar Parte {idx+1}",
+                        data=convertir_excel(df_part),
+                        file_name=f"marco_parte_{idx+1}.xlsx"
+                    )
