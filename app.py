@@ -84,7 +84,7 @@ def generar_pdf_informe(cuotas_df, reglas_df):
         tmpfile.seek(0)
         return tmpfile.read()
 
-# Carga de archivo
+# Interfaz
 file = st.file_uploader("📂 Sube tu archivo Excel (.xlsx)", type=["xlsx"])
 
 if file:
@@ -147,6 +147,11 @@ if file:
             edited_df['Deseados'] = edited_df.apply(
                 lambda row: min(row['Deseados'], cuota_max), axis=1)
 
+        # Limitar deseados a lo disponible
+        edited_df['Deseados'] = edited_df.apply(
+            lambda row: min(row['Deseados'], row['Disponibles']), axis=1
+        )
+
         st.subheader("⚖️ Reglas globales de porcentaje")
         reglas_data = st.data_editor(reglas_data, use_container_width=True, key="reglas_editor", num_rows="dynamic")
         total_casos_actual = edited_df['Deseados'].sum()
@@ -199,22 +204,30 @@ if file:
                         (base['RANGO_EDAD_CUSTOM'] == row['RANGO_EDAD_CUSTOM']) &
                         (base['NOMBRE_GENERO'] == row['NOMBRE_GENERO'])
                     ]
-                    n = min(row['Deseados'], len(subset))
-                    muestras.append(subset.sample(n, random_state=42))
-            muestra_final = pd.concat(muestras).sample(frac=1, random_state=42).reset_index(drop=True)
-            muestra_final['estrato'] = muestra_final['ZONA'] + "_" + muestra_final['GSE'] + "_" + muestra_final['RANGO_EDAD_CUSTOM'] + "_" + muestra_final['NOMBRE_GENERO']
+                    if not subset.empty:
+                        n = min(row['Deseados'], len(subset))
+                        if n > 0:
+                            muestras.append(subset.sample(n, random_state=42))
+                    else:
+                        st.warning(f"⚠️ No hay casos disponibles para: {row['ZONA']}, {row['GSE']}, {row['RANGO_EDAD_CUSTOM']}, {row['NOMBRE_GENERO']}")
 
-            partes_data = []
-            temp = muestra_final.copy()
-            for i in range(partes - 1):
-                temp, part = train_test_split(temp, test_size=1/(partes - i), stratify=temp['estrato'], random_state=42)
-                part.drop(columns='estrato', inplace=True)
-                partes_data.append(part)
-            temp.drop(columns='estrato', inplace=True)
-            partes_data.append(temp)
+            if muestras:
+                muestra_final = pd.concat(muestras).sample(frac=1, random_state=42).reset_index(drop=True)
+                muestra_final['estrato'] = muestra_final['ZONA'] + "_" + muestra_final['GSE'] + "_" + muestra_final['RANGO_EDAD_CUSTOM'] + "_" + muestra_final['NOMBRE_GENERO']
 
-            for idx, df_part in enumerate(partes_data):
-                st.download_button(f"📥 Descargar Parte {idx+1}", convertir_excel_config(df_part, pd.DataFrame()), f"marco_parte_{idx+1}.xlsx")
+                partes_data = []
+                temp = muestra_final.copy()
+                for i in range(partes - 1):
+                    temp, part = train_test_split(temp, test_size=1/(partes - i), stratify=temp['estrato'], random_state=42)
+                    part.drop(columns='estrato', inplace=True)
+                    partes_data.append(part)
+                temp.drop(columns='estrato', inplace=True)
+                partes_data.append(temp)
+
+                for idx, df_part in enumerate(partes_data):
+                    st.download_button(f"📥 Descargar Parte {idx+1}", convertir_excel_config(df_part, pd.DataFrame()), f"marco_parte_{idx+1}.xlsx")
+            else:
+                st.error("❌ No se pudo generar muestra: ningún segmento válido.")
 
         # PDF
         st.subheader("🧾 Informe PDF")
