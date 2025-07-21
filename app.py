@@ -147,7 +147,6 @@ if file:
             edited_df['Deseados'] = edited_df.apply(
                 lambda row: min(row['Deseados'], cuota_max), axis=1)
 
-        # Limitar deseados a lo disponible
         edited_df['Deseados'] = edited_df.apply(
             lambda row: min(row['Deseados'], row['Disponibles']), axis=1
         )
@@ -192,7 +191,7 @@ if file:
             fig = px.bar(edited_df.groupby(var)['Deseados'].sum().reset_index(), x=var, y='Deseados', title=f'Casos por {var}')
             st.plotly_chart(fig, use_container_width=True)
 
-        st.download_button("💾 Descargar configuración completa", convertir_excel_config(edited_df, reglas_data), "configuracion_completa.xlsx")
+        st.download_button("📅 Descargar configuración completa", convertir_excel_config(edited_df, reglas_data), "configuracion_completa.xlsx")
 
         if st.button("🎲 Generar muestra"):
             muestras = []
@@ -205,9 +204,12 @@ if file:
                         (base['NOMBRE_GENERO'] == row['NOMBRE_GENERO'])
                     ]
                     if not subset.empty:
-                        n = min(row['Deseados'], len(subset))
-                        if n > 0:
+                        n = row['Deseados']
+                        if len(subset) >= n:
                             muestras.append(subset.sample(n, random_state=42))
+                        else:
+                            st.warning(f"⚠️ Solo hay {len(subset)} casos disponibles para: {row['ZONA']}, {row['GSE']}, {row['RANGO_EDAD_CUSTOM']}, {row['NOMBRE_GENERO']}. Se incluirán todos.")
+                            muestras.append(subset)
                     else:
                         st.warning(f"⚠️ No hay casos disponibles para: {row['ZONA']}, {row['GSE']}, {row['RANGO_EDAD_CUSTOM']}, {row['NOMBRE_GENERO']}")
 
@@ -225,11 +227,10 @@ if file:
                 partes_data.append(temp)
 
                 for idx, df_part in enumerate(partes_data):
-                    st.download_button(f"📥 Descargar Parte {idx+1}", convertir_excel_config(df_part, pd.DataFrame()), f"marco_parte_{idx+1}.xlsx")
+                    st.download_button(f"📅 Descargar Parte {idx+1}", convertir_excel_config(df_part, pd.DataFrame()), f"marco_parte_{idx+1}.xlsx")
             else:
                 st.error("❌ No se pudo generar muestra: ningún segmento válido.")
 
-        # PDF
         st.subheader("🧾 Informe PDF")
         pdf_bytes = generar_pdf_informe(edited_df, reglas_data)
         st.download_button("📄 Descargar Informe PDF", data=pdf_bytes, file_name="informe_muestra.pdf", mime="application/pdf")
