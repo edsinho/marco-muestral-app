@@ -101,7 +101,7 @@ if file:
         zonas = st.multiselect("Zonas a incluir:", df['ZONA'].unique().tolist(), default=list(df['ZONA'].unique()))
         gses = st.multiselect("GSEs a incluir:", df['GSE'].unique().tolist(), default=list(df['GSE'].unique()))
         generos = st.multiselect("Géneros a incluir:", df['NOMBRE_GENERO'].unique().tolist(), default=list(df['NOMBRE_GENERO'].unique()))
-        partes = st.number_input("¿En cuántas partes deseas dividir la muestra?", min_value=1, max_value=10, value=3)
+        partes = st.number_input("¿En cuántas partes deseas dividir la muestra?", min_value=1, max_value=12, value=1)
 
         base = df[
             df['ZONA'].isin(zonas) &
